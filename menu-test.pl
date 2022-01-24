@@ -10,19 +10,16 @@
 use strict;
 use warnings;
 use Data::Dumper;
+no warnings 'recursion';
 
 my $parameters = \@ARGV;
 my $testfile = ${$parameters}[0];
-our $success_total = 0;
-our @output = [];
+our (@output,@index);
 
 # Main 
 my @menu_data = &read_file($testfile);  # read $testfile and store data in @menu_data
-&parse_data(@menu_data);
+my @final_output = &parse_data(@menu_data);
 
-print "FINAL:".Dumper($success_total,@output);
-
-# &display_output(@final_output);
 exit;
 
 #####
@@ -38,55 +35,63 @@ sub parse_data() {
     $goal_total =~ s/^\$//; # remove '$'
     $goal_total = sprintf "%0.2f",$goal_total; # force numeric (strip newline)
     
-    my (%item_hash,%count_hash);
+    my (@value_array,@item_array,@suboutput);
 
     foreach my $count (1 .. $length) {
         my ($menu_item,$item_value) = split(/,/,${$data_array}[$count]); # split data line on comma
         $item_value =~ s/^\$//; # remove '$'
         $item_value = sprintf "%0.2f",$item_value; # force numeric (strip newline)
-        $item_hash{$menu_item} = $item_value; # store data pair (item and value) in hash
-        $count_hash{$menu_item} = 0; # initialize count hash
+        $item_array[$count-1] = $menu_item; # store data pair (item and value) in hash
+        $value_array[$count-1] = $item_value; # initialize count hash
     }
     
-    foreach my $item (keys %item_hash) {
-        if ($item_hash{$item} > $goal_total) {  print "skipping $item...\n"; next;   }
-        &reparse(\%item_hash,\%count_hash,$goal_total,0);
+    my (@final_output,@final_subindex) = &reparse(\@value_array,$#value_array,$goal_total,0,[],[]);
+    
+    print "Solutions:\n";
+    my $count = 0;
+    foreach my $solution (@main::index) {
+        print "$count: ";
+        foreach my $index ($solution) {
+            foreach my $item (@$index) {
+                print "$item_array[$item], ";
+            }      
+        }
+        print "\n";
+        $count++;
     }
     
     return;
 }
 
 sub reparse() {    
-    my %menu_items = %{$_[0]};
-    my %count_hash = %{$_[1]};
+    my $test_values = $_[0];
+    my $max_depth = $_[1];
     my $cost_limit = $_[2];
     my $subdepth = $_[3];
-
-    $subdepth++;
-    print "Entering reparse $subdepth...\n";
-    while ($cost_limit > 0) {
-        print "for loop $subdepth started\n";
-        foreach my $item (keys %menu_items) {
-
-            if ($menu_items{$item} > $cost_limit) {  print "skipping $item\n"; delete $menu_items{$item}; next;   }
-
-            $cost_limit = $cost_limit - $menu_items{$item};
-            $count_hash{$item}++;
-            print "added $item\n";
-            
-            if ($cost_limit > 0) {
-                print "calling reparse within $subdepth\n";
-                &reparse(\%menu_items,\%count_hash,$cost_limit,$subdepth);
-            } elsif ($cost_limit==0) {
-                print "success detected\n";
-                push(@main::output, \%count_hash);
-                $main::success_total++;
-                print "returning from $subdepth...\n";
-            }
-        }
-        print "for loop $subdepth exited\n";
+    my $suboutput = $_[4];
+    my $subindex = $_[5];
+    
+    my $subtotal = &sum_array(\@$suboutput);
+    
+    if ($subtotal == $cost_limit) { # if the subtotal of suboutput equals the cost limit then success found, return solution
+        push(@main::index,\@$subindex); # push array of indexes to global storage
+        return @$suboutput,@$subindex;
+    } elsif (($subtotal > $cost_limit)||($subdepth > $max_depth)) { # if subtotal is greater than the cost limit or subdepth is greather than the max depth then went beyond limits, return nothing
+        return;
     }
 
+    &reparse(\@$test_values,$max_depth,$cost_limit,$subdepth+1,\@$suboutput,\@$subindex); #check next depth down using current solution
+    &reparse(\@$test_values,$max_depth,$cost_limit,$subdepth,[@$suboutput,$$test_values[$subdepth]],[@$subindex,$subdepth]); #check current depth adding next value to solution
+
+}
+
+sub sum_array() {
+    my $array = $_[0];
+    my $sum = 0;
+    foreach my $item (@$array) {
+        $sum += $item;
+    }
+    return $sum;
 }
 
 sub read_file() {
@@ -106,7 +111,7 @@ sub read_file() {
     }
     close $fileh;
     if ($count == 0) { die "No data in datafile '$filename'!\nUnable to proceed.\n"; }
-    print "lines read: ".$count."\n";
+    print "datafile lines read: ".$count."\n";
     return \@data;
 }
 
