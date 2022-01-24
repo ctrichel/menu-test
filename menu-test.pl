@@ -13,10 +13,15 @@ use Data::Dumper;
 
 my $parameters = \@ARGV;
 my $testfile = ${$parameters}[0];
+our $success_total = 0;
+our @output = [];
 
 # Main 
 my @menu_data = &read_file($testfile);  # read $testfile and store data in @menu_data
-my @final_output = &parse_data(@menu_data);
+&parse_data(@menu_data);
+
+print "FINAL:".Dumper($success_total,@output);
+
 # &display_output(@final_output);
 exit;
 
@@ -27,64 +32,61 @@ exit;
 #####
 
 sub parse_data() {
-    my $data = $_[0];
-    my $length = $#{$data};
-    my $depth = 0;
-    my (@output,$success_count,$success_flag);
-    my $goal_total = ${$data}[0];
-    $goal_total =~ s/^\$//; # remove '$' and newline for value
-    $goal_total = sprintf "%0.2f",$goal_total;
+    my $data_array = $_[0];
+    my $length = $#{$data_array};
+    my $goal_total = ${$data_array}[0];
+    $goal_total =~ s/^\$//; # remove '$'
+    $goal_total = sprintf "%0.2f",$goal_total; # force numeric (strip newline)
     
-    my %item_hash;
-    my $small_value=1;
-    my $large_value=1;
-    
+    my (%item_hash,%count_hash);
+
     foreach my $count (1 .. $length) {
-        my ($menu_item,$item_value) = split(/,/,${$data}[$count]); # split data line on comma
-        $item_value =~ s/^\$//; # remove '$' and newline for value
+        my ($menu_item,$item_value) = split(/,/,${$data_array}[$count]); # split data line on comma
+        $item_value =~ s/^\$//; # remove '$'
         $item_value = sprintf "%0.2f",$item_value; # force numeric (strip newline)
         $item_hash{$menu_item} = $item_value; # store data pair (item and value) in hash
-
-        if (($item_value - $small_value) < 0) { $small_value = $item_value; } # determine and store smallest value
-        if (($item_value - $large_value) > 0) { $large_value = $item_value; } # determine and store largest value
+        $count_hash{$menu_item} = 0; # initialize count hash
     }
     
-    print "First:\n".Dumper(\%item_hash,$goal_total,$small_value,$large_value,$depth);
-    (@output,$success_count,undef) = &reparse(\%item_hash,$goal_total,$small_value,$large_value,1,\@output,0,0);
+    foreach my $item (keys %item_hash) {
+        if ($item_hash{$item} > $goal_total) {  print "skipping $item...\n"; next;   }
+        &reparse(\%item_hash,\%count_hash,$goal_total,0);
+    }
     
-    print "Final:\n".Dumper($success_count,\@output);
-    return @output;
+    return;
 }
 
 sub reparse() {    
-    my $menu_items = $_[0];
-    my $cost_limit = $_[1];
-    my $low_limit = $_[2];
-    my $hi_limit = $_[3];
-    my $subdepth = $_[4];
-    my $suboutput = $_[5];
-    my $success_count = $_[6];
-    my $success_flag = $_[7];
+    my %menu_items = %{$_[0]};
+    my %count_hash = %{$_[1]};
+    my $cost_limit = $_[2];
+    my $subdepth = $_[3];
 
-    print "Entering reparse#$subdepth...\n";    
-    print Dumper(\%{$menu_items},$cost_limit,$low_limit,$hi_limit,$subdepth,\@{$suboutput},$success_count,$success_flag);
-    
-    foreach my $item (sort keys %{$menu_items}) {
-        print "$subdepth:\n$cost_limit\n$item\t$$menu_items{$item}\n";
-        if (($cost_limit < 0)||($success_flag)) {  print "success detected\n"; $success_flag = 1; last;   }
-        if ($$menu_items{$item} > $cost_limit) {  print "skipping '$item'\n"; next;   }
+    $subdepth++;
+    print "Entering reparse $subdepth...\n";
+    while ($cost_limit > 0) {
+        print "for loop $subdepth started\n";
+        foreach my $item (keys %menu_items) {
 
-        $cost_limit = $cost_limit - $$menu_items{$item};
-        $$suboutput[$success_count] .= (!defined $$suboutput[$success_count])?$item:",".$item ;
+            if ($menu_items{$item} > $cost_limit) {  print "skipping $item\n"; delete $menu_items{$item}; next;   }
 
-        if (!$success_flag) {
-            (@{$suboutput},$success_count,$success_flag) = &reparse(\%{$menu_items},$cost_limit,$low_limit,$hi_limit,++$subdepth,\@{$suboutput},$success_count,$success_flag);
+            $cost_limit = $cost_limit - $menu_items{$item};
+            $count_hash{$item}++;
+            print "added $item\n";
+            
+            if ($cost_limit > 0) {
+                print "calling reparse within $subdepth\n";
+                &reparse(\%menu_items,\%count_hash,$cost_limit,$subdepth);
+            } elsif ($cost_limit==0) {
+                print "success detected\n";
+                push(@main::output, \%count_hash);
+                $main::success_total++;
+                print "returning from $subdepth...\n";
+            }
         }
+        print "for loop $subdepth exited\n";
     }
 
-    if ($success_flag && ($subdepth == 1)) { print "next array slice\n"; $success_count++; $success_flag = 0; }
-    print "Exiting reparse#$subdepth...\n";
-    return @{$suboutput},$success_count,$success_flag;
 }
 
 sub read_file() {
@@ -96,9 +98,14 @@ sub read_file() {
         die "Unable to open '$filename'!\n ! $! !\n";
     
     while (! eof $fileh) {
-        $data[$count++] = readline($fileh);
+        $data[$count] = readline($fileh);
+        if ((!$data[$count])||($data[$count] !~ m/.+\,\$\d+\.\d\d/g)&&($data[$count] !~ m/^\$\d+\.\d\d/g)) {
+            die "Data is malformed at line $count!\nUnable to proceed.\n";
+        }
+        $count++;
     }
     close $fileh;
+    if ($count == 0) { die "No data in datafile '$filename'!\nUnable to proceed.\n"; }
     print "lines read: ".$count."\n";
     return \@data;
 }
