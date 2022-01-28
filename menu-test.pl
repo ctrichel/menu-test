@@ -9,16 +9,11 @@
 
 use strict;
 use warnings;
-use Data::Dumper;
-no warnings 'recursion';
 
-my $parameters = \@ARGV;
-my $testfile = ${$parameters}[0];
-our (@output,@index);
+my $testfile = $ARGV[0];
 
 # Main 
-my @menu_data = &read_file($testfile);  # read $testfile and store data in @menu_data
-my @final_output = &parse_data(@menu_data);
+&parse_data(&read_file($testfile)); # read $testfile and parse returned data
 
 exit;
 
@@ -63,13 +58,8 @@ sub parse_data() {
     return;
 }
 
-sub reparse() {    
-    my $test_values = $_[0];
-    my $max_depth = $_[1];
-    my $cost_limit = $_[2];
-    my $subdepth = $_[3];
-    my $suboutput = $_[4];
-    my $subindex = $_[5];
+sub reparse() {
+    my ($test_values,$max_depth,$cost_limit,$subdepth,$suboutput,$subindex) = @_;
     
     my $subtotal = &sum_array(\@$suboutput);
     
@@ -96,7 +86,7 @@ sub sum_array() {
 
 sub read_file() {
     my $filename = $_[0];
-    my @data = [];
+    my @data;
     my $count = 0;
     
     open (my $fileh, "<", $filename) ||
