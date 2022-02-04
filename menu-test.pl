@@ -44,7 +44,7 @@ sub parse_data() {
     my (@final_output,@final_subindex) = &reparse(\@value_array,$#value_array,$goal_total,0,[],[]);
     
     print "Solutions:\n\n";
-    my $count = 0;
+    my $count = 1;
     foreach my $solution (@main::index) {
         print "$count: ";
         foreach my $index ($solution) {
