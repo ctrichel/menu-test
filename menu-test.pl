@@ -11,6 +11,7 @@ use strict;
 use warnings;
 
 my $testfile = $ARGV[0];
+our @index;
 
 # Main 
 &parse_data(&read_file($testfile)); # read $testfile and parse returned data
@@ -42,14 +43,19 @@ sub parse_data() {
     
     my (@final_output,@final_subindex) = &reparse(\@value_array,$#value_array,$goal_total,0,[],[]);
     
-    print "Solutions:\n";
+    print "Solutions:\n\n";
     my $count = 0;
     foreach my $solution (@main::index) {
         print "$count: ";
         foreach my $index ($solution) {
+            my %solution_counts;
             foreach my $item (@$index) {
-                print "$item_array[$item], ";
-            }      
+                $solution_counts{$item}++;
+            
+            }
+            foreach my $item (sort keys %solution_counts) {
+                print "\t$item_array[$item] x $solution_counts{$item}\n";
+            }
         }
         print "\n";
         $count++;
